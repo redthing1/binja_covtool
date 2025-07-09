@@ -1,3 +1,7 @@
+CLAUDE*
+claude/
+.claude
+
 *.pyc
 *.tmp
 .vscode
