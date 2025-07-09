@@ -38,13 +38,7 @@ def import_coverage(bv):
     ctx.covdb.load_coverage(filepath, coverage_data)
 
     # apply current filter and paint
-    if ctx.filter_mode != "disabled" and ctx.filter_hitcount > 0:
-        filtered_addrs = ctx.covdb.filter_by_hitcount(
-            ctx.filter_hitcount, ctx.filter_mode
-        )
-        ctx.painter.paint_coverage(filtered_addrs)
-    else:
-        ctx.painter.paint_coverage()
+    _repaint_coverage(ctx)
 
     # show stats if enabled
     if my_settings.get_bool("covtool.showStatsInLog"):
@@ -77,14 +71,7 @@ def filter_coverage(bv):
         ctx.filter_hitcount = hitcount_field.result
 
         # repaint with filter
-        if ctx.covdb.coverage_file:
-            if ctx.filter_mode != "disabled" and ctx.filter_hitcount > 0:
-                filtered_addrs = ctx.covdb.filter_by_hitcount(
-                    ctx.filter_hitcount, ctx.filter_mode
-                )
-                ctx.painter.paint_coverage(filtered_addrs)
-            else:
-                ctx.painter.paint_coverage()
+        _repaint_coverage(ctx)
 
 
 def clear_coverage(bv):
@@ -94,7 +81,27 @@ def clear_coverage(bv):
     ctx.covdb.clear()
     ctx.filter_hitcount = 0
     ctx.filter_mode = "disabled"
+    ctx.heatmap_enabled = False
     log_info("coverage cleared")
+
+
+def _repaint_coverage(ctx):
+    """helper to repaint coverage with current settings"""
+    if not ctx.covdb.coverage_file:
+        return
+    
+    # get filtered addresses if filter is active
+    coverage_addrs = None
+    if ctx.filter_mode != "disabled" and ctx.filter_hitcount > 0:
+        coverage_addrs = ctx.covdb.filter_by_hitcount(
+            ctx.filter_hitcount, ctx.filter_mode
+        )
+    
+    # paint with appropriate method
+    if ctx.heatmap_enabled:
+        ctx.painter.paint_heatmap(coverage_addrs)
+    else:
+        ctx.painter.paint_coverage(coverage_addrs)
 
 
 def toggle_heatmap(bv):
@@ -105,15 +112,15 @@ def toggle_heatmap(bv):
         show_message_box("no coverage", "no coverage file loaded")
         return
 
-    # for now, just switch to heatmap
-    # later could track state and toggle
-    if ctx.filter_mode != "disabled" and ctx.filter_hitcount > 0:
-        filtered_addrs = ctx.covdb.filter_by_hitcount(
-            ctx.filter_hitcount, ctx.filter_mode
-        )
-        ctx.painter.paint_heatmap(filtered_addrs)
-    else:
-        ctx.painter.paint_heatmap()
+    # toggle state
+    ctx.heatmap_enabled = not ctx.heatmap_enabled
+    
+    # repaint with new state
+    _repaint_coverage(ctx)
+    
+    # log the change
+    mode = "heatmap" if ctx.heatmap_enabled else "solid color"
+    log_info(f"switched to {mode} visualization")
 
 
 # register plugin commands

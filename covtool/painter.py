@@ -1,3 +1,4 @@
+import math
 from binaryninja import *
 from binaryninja.enums import HighlightStandardColor
 from binaryninja.highlight import HighlightColor
@@ -14,7 +15,7 @@ class CoveragePainter:
 
     def paint_coverage(self, coverage_addrs=None, color=None):
         """paint coverage with specified color"""
-        # clear existing highlights
+        # clear only our existing highlights
         self.clear_highlights()
 
         # use all covered addrs if none specified
@@ -46,8 +47,6 @@ class CoveragePainter:
 
     def paint_heatmap(self, coverage_addrs=None):
         """paint coverage as heatmap based on hitcounts"""
-        import math
-
         self.clear_highlights()
 
         if coverage_addrs is None:
@@ -119,8 +118,6 @@ class CoveragePainter:
         self, hitcount, min_count, cap_value, log_min, log_cap
     ):
         """compute color on spectrum using logarithmic scale"""
-        import math
-
         if cap_value == min_count:
             # all same hitcount, use middle color
             return HighlightColor(red=128, green=0, blue=128)
@@ -144,7 +141,9 @@ class CoveragePainter:
         return HighlightColor(red=red, green=0, blue=blue)
 
     def clear_highlights(self):
-        """clear all existing highlights"""
-        for func, addr in self.highlighted_addrs:
+        """clear only our tracked highlights"""
+        # create a copy to avoid modification during iteration
+        addrs_to_clear = list(self.highlighted_addrs)
+        for func, addr in addrs_to_clear:
             func.set_auto_instr_highlight(addr, HighlightStandardColor.NoHighlightColor)
         self.highlighted_addrs.clear()

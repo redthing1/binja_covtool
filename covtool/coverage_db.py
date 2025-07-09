@@ -62,8 +62,11 @@ class CoverageDB:
                             while current_addr < block.end:
                                 instructions.append(current_addr)
                                 inst_len = BNGetInstructionLength(bh, ah, current_addr)
-                                if not inst_len:
-                                    inst_len = 1  # fallback
+                                if not inst_len or inst_len <= 0:
+                                    inst_len = 1  # fallback for invalid instruction
+                                # bounds check to prevent infinite loop
+                                if inst_len > 16:  # max reasonable instruction length
+                                    inst_len = 1
                                 current_addr += inst_len
                             self._block_cache[block_addr] = instructions
                             return instructions
@@ -79,8 +82,11 @@ class CoverageDB:
         while current_addr < block.end:
             instructions.append(current_addr)
             inst_len = BNGetInstructionLength(bh, ah, current_addr)
-            if not inst_len:
-                inst_len = 1  # fallback
+            if not inst_len or inst_len <= 0:
+                inst_len = 1  # fallback for invalid instruction
+            # bounds check to prevent infinite loop
+            if inst_len > 16:  # max reasonable instruction length
+                inst_len = 1
             current_addr += inst_len
 
         self._block_cache[block_addr] = instructions

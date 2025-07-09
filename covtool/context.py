@@ -11,6 +11,7 @@ class CovToolContext:
     painter: CoveragePainter
     filter_hitcount: int = 0  # current filter setting
     filter_mode: str = "disabled"  # "disabled", "minimum", "maximum", "exact"
+    heatmap_enabled: bool = False  # track heatmap visualization state
 
 
 def get_context(bv) -> CovToolContext:
