@@ -66,16 +66,16 @@ class DrCovParser(CoverageParser):
             # use hit counts from the file
             for i, bb in enumerate(coverage_data.basic_blocks):
                 if bb.module_id == target_module.id:
-                    # convert module offset to absolute address in BinaryView
-                    abs_addr = self.bv.start + bb.start
+                    # convert module offset to absolute address
+                    abs_addr = target_module.base + bb.start
                     hitcount = coverage_data.get_hit_count(i)
                     coverage[abs_addr] = coverage.get(abs_addr, 0) + hitcount
         else:
             # no hit counts, treat each block as hit once
             for bb in coverage_data.basic_blocks:
                 if bb.module_id == target_module.id:
-                    # convert module offset to absolute address in BinaryView
-                    abs_addr = self.bv.start + bb.start
+                    # convert module offset to absolute address
+                    abs_addr = target_module.base + bb.start
                     coverage[abs_addr] = coverage.get(abs_addr, 0) + 1
 
         self.log_stats(coverage)
