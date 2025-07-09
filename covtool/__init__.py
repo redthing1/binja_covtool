@@ -10,6 +10,7 @@ from binaryninja.interaction import (
 from .context import get_context
 from .parsers import detect_and_parse
 from .settings import my_settings
+from .tasks import CoverageImportTask
 
 
 def import_coverage(bv):
@@ -18,27 +19,9 @@ def import_coverage(bv):
     if not filepath:
         return
 
-    ctx = get_context(bv)
-
-    # parse coverage file
-    try:
-        coverage_data = detect_and_parse(bv, filepath)
-    except Exception as e:
-        show_message_box("error", f"failed to parse coverage file: {e}")
-        return
-
-    # load into database
-    ctx.covdb.load_coverage(filepath, coverage_data)
-
-    # apply current filter and paint
-    _repaint_coverage(ctx)
-
-    # show stats if enabled
-    if my_settings.get_bool("covtool.showStatsInLog"):
-        stats = ctx.covdb.get_coverage_stats()
-        log_info(
-            f"loaded coverage: {stats['total_covered']} instructions from {stats['unique_blocks']} blocks"
-        )
+    # create and start background task
+    task = CoverageImportTask(bv, filepath)
+    task.start()
 
 
 def filter_coverage(bv):
