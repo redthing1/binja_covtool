@@ -2,6 +2,10 @@ CLAUDE*
 claude/
 .claude
 
+*.txt
+*.cov
+*.drcov
+
 *.pyc
 *.tmp
 .vscode

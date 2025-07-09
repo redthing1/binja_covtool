@@ -193,11 +193,15 @@ class CoverageData:
                     raise DrCovError(
                         f"Basic block references invalid module ID: {bb.module_id}"
                     )
-        
+
         if permissive and invalid_blocks:
-            print(f"Warning: Filtering out {len(invalid_blocks)} basic blocks with invalid module IDs")
+            print(
+                f"Warning: Filtering out {len(invalid_blocks)} basic blocks with invalid module IDs"
+            )
             valid_indices = [
-                i for i, bb in enumerate(self.basic_blocks) if bb.module_id in module_ids
+                i
+                for i, bb in enumerate(self.basic_blocks)
+                if bb.module_id in module_ids
             ]
             self.basic_blocks = [self.basic_blocks[i] for i in valid_indices]
             if self.hit_counts:
@@ -340,7 +344,7 @@ class _Parser:
             )
 
         modules, module_version = _Parser._parse_module_table(stream)
-        
+
         # Read the BB table header as text first
         bb_line = stream.readline().strip()
         if not bb_line.startswith(_BB_TABLE_PREFIX):
@@ -348,11 +352,11 @@ class _Parser:
             basic_blocks = []
         else:
             try:
-                count_str = bb_line[len(_BB_TABLE_PREFIX):].split(' ')[0]
+                count_str = bb_line[len(_BB_TABLE_PREFIX) :].split(" ")[0]
                 count = int(count_str)
             except (ValueError, IndexError) as e:
                 raise DrCovError(f"Malformed BB table count: {e}")
-            
+
             if count == 0:
                 basic_blocks = []
             else:
@@ -361,7 +365,7 @@ class _Parser:
                 binary_data = binary_stream.read(count * _BB_ENTRY_SIZE)
                 if len(binary_data) != count * _BB_ENTRY_SIZE:
                     raise DrCovError("Failed to read complete BB table binary data.")
-                
+
                 basic_blocks = []
                 for i in range(count):
                     offset = i * _BB_ENTRY_SIZE
@@ -479,78 +483,84 @@ class _Parser:
         return modules, version
 
     @staticmethod
-    def _parse_hit_count_table(stream: Union[TextIO, str], expected_count: int) -> List[int]:
+    def _parse_hit_count_table(
+        stream: Union[TextIO, str], expected_count: int
+    ) -> List[int]:
         """Parse hit count table. Returns list of hit counts or raises DrCovError if not found."""
         try:
             # Handle both TextIO streams and string content
             if isinstance(stream, str):
-                lines = stream.split('\n')
+                lines = stream.split("\n")
                 if not lines or not lines[0].strip():
                     raise DrCovError("No hit count table found")
                 hit_line = lines[0].strip()
-                remaining_content = '\n'.join(lines[1:]) if len(lines) > 1 else ""
+                remaining_content = "\n".join(lines[1:]) if len(lines) > 1 else ""
             else:
                 hit_line = stream.readline().strip()
                 if not hit_line:
                     raise DrCovError("No hit count table found")
                 remaining_content = stream.read()
-            
+
             if not hit_line.startswith(_HIT_COUNT_TABLE_PREFIX):
                 raise DrCovError("Invalid hit count table header")
-            
+
             # Parse header: "Hit Count Table: version 1, count <N>"
-            header_parts = hit_line[len(_HIT_COUNT_TABLE_PREFIX):].strip().split(',')
+            header_parts = hit_line[len(_HIT_COUNT_TABLE_PREFIX) :].strip().split(",")
             if len(header_parts) != 2:
                 raise DrCovError("Malformed hit count table header")
-            
+
             version_part = header_parts[0].strip()
             count_part = header_parts[1].strip()
-            
+
             if not version_part.startswith("version "):
                 raise DrCovError("Missing version in hit count table header")
-            
+
             version = int(version_part[8:])  # Skip "version "
             if version != 1:
                 raise DrCovError(f"Unsupported hit count table version: {version}")
-            
+
             if not count_part.startswith("count "):
                 raise DrCovError("Missing count in hit count table header")
-            
+
             count = int(count_part[6:])  # Skip "count "
             if count != expected_count:
                 raise DrCovError(
                     f"Hit count table count ({count}) does not match basic block count ({expected_count})"
                 )
-            
+
             if count == 0:
                 return []
-            
+
             # Read binary hit count data - handle different stream types
-            if isinstance(stream, str) or not hasattr(stream, 'buffer'):
+            if isinstance(stream, str) or not hasattr(stream, "buffer"):
                 # For string content or StringIO, we need the binary data as bytes
-                binary_data = remaining_content.encode('latin1')[:count * _HIT_COUNT_ENTRY_SIZE]
+                binary_data = remaining_content.encode("latin1")[
+                    : count * _HIT_COUNT_ENTRY_SIZE
+                ]
             else:
                 # For real file streams with buffer
                 binary_stream = stream.buffer
                 binary_data = binary_stream.read(count * _HIT_COUNT_ENTRY_SIZE)
-                
+
             if len(binary_data) != count * _HIT_COUNT_ENTRY_SIZE:
                 raise DrCovError("Failed to read complete hit count table binary data")
-            
+
             hit_counts = []
             for i in range(count):
                 offset = i * _HIT_COUNT_ENTRY_SIZE
                 entry_data = binary_data[offset : offset + _HIT_COUNT_ENTRY_SIZE]
                 hit_count = struct.unpack("<I", entry_data)[0]
                 hit_counts.append(hit_count)
-            
+
             return hit_counts
-        
+
         except (ValueError, struct.error) as e:
             raise DrCovError(f"Error parsing hit count table: {e}")
 
     @staticmethod
-    def _parse_hit_count_table_from_binary(data: bytes, expected_count: int) -> List[int]:
+    def _parse_hit_count_table_from_binary(
+        data: bytes, expected_count: int
+    ) -> List[int]:
         """Parse hit count table from raw binary data with text header."""
         try:
             text_part = data.decode("utf-8", errors="ignore")
@@ -621,7 +631,9 @@ class _Parser:
         return data
 
     @staticmethod
-    def parse_with_binary(text_stream: TextIO, bb_stream: BinaryIO, permissive: bool = False) -> CoverageData:
+    def parse_with_binary(
+        text_stream: TextIO, bb_stream: BinaryIO, permissive: bool = False
+    ) -> CoverageData:
         """Parse a drcov file by splitting text and binary parts."""
         header = _Parser._parse_header(text_stream)
         if header.version != _SUPPORTED_FILE_VERSION:
@@ -630,7 +642,7 @@ class _Parser:
             )
 
         modules, module_version = _Parser._parse_module_table(text_stream)
-        
+
         # Parse BB table from binary stream
         line_bytes = bb_stream.readline()
         if not line_bytes:
@@ -641,7 +653,7 @@ class _Parser:
                 raise DrCovError("Invalid or missing BB table header.")
 
             try:
-                count_str = line[len(_BB_TABLE_PREFIX):].split(' ')[0]
+                count_str = line[len(_BB_TABLE_PREFIX) :].split(" ")[0]
                 count = int(count_str)
             except (ValueError, IndexError) as e:
                 raise DrCovError(f"Malformed BB table count: {e}")
@@ -685,7 +697,6 @@ class _Parser:
         return data
 
 
-
 # --- Writer Implementation ---
 
 
@@ -722,7 +733,7 @@ class _Writer:
             binary_stream = stream
 
         _Writer._write_bb_table(data.basic_blocks, binary_stream)
-        
+
         # Write hit count table if present
         if data.hit_counts is not None:
             _Writer._write_hit_count_table(data.hit_counts, binary_stream)
@@ -822,7 +833,9 @@ class _Writer:
 T = TypeVar("T")
 
 
-def read(filepath_or_stream: Union[str, TextIO], permissive: bool = False) -> CoverageData:
+def read(
+    filepath_or_stream: Union[str, TextIO], permissive: bool = False
+) -> CoverageData:
     """
     Reads and parses a DrCov file from a path or a text stream.
 
@@ -841,24 +854,28 @@ def read(filepath_or_stream: Union[str, TextIO], permissive: bool = False) -> Co
         # Read the entire file as binary, then parse
         with open(filepath_or_stream, "rb") as f:
             binary_data = f.read()
-        
+
         # Find the split point between text and binary parts
         bb_table_start = binary_data.find(b"BB Table:")
         if bb_table_start == -1:
             # No BB table, parse as text only
             text_data = binary_data.decode("utf-8", errors="ignore")
             from io import StringIO
+
             return _Parser.parse_text_only(StringIO(text_data), permissive=permissive)
         else:
             # Split at BB table
             text_part = binary_data[:bb_table_start].decode("utf-8", errors="ignore")
             bb_part = binary_data[bb_table_start:]
-            
+
             from io import StringIO, BytesIO
+
             text_stream = StringIO(text_part)
             bb_stream = BytesIO(bb_part)
-            
-            return _Parser.parse_with_binary(text_stream, bb_stream, permissive=permissive)
+
+            return _Parser.parse_with_binary(
+                text_stream, bb_stream, permissive=permissive
+            )
     else:
         return _Parser.parse_stream(filepath_or_stream, permissive=permissive)
 
