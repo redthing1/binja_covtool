@@ -20,7 +20,7 @@ class CoveragePainter:
 
         # use all covered addrs if none specified
         if coverage_addrs is None:
-            coverage_addrs = self.covdb.covered_addrs
+            coverage_addrs = set(self.covdb.hitcounts.keys())
 
         # default to configured color
         if color is None:
@@ -50,7 +50,7 @@ class CoveragePainter:
         self.clear_highlights()
 
         if coverage_addrs is None:
-            coverage_addrs = self.covdb.covered_addrs
+            coverage_addrs = set(self.covdb.hitcounts.keys())
 
         # calculate hitcount distribution
         hitcounts = [self.covdb.get_hitcount(addr) for addr in coverage_addrs]

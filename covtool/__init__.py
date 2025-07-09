@@ -6,17 +6,10 @@ from binaryninja.interaction import (
     show_message_box,
     ChoiceField,
 )
-from binaryninja.enums import HighlightStandardColor
-from binaryninja.highlight import HighlightColor
-
-import binaryninja._binaryninjacore as core
 
 from .context import get_context
 from .parsers import detect_and_parse
 from .settings import my_settings
-
-# cache BNGetInstructionLength for performance
-BNGetInstructionLength = core.BNGetInstructionLength
 
 
 def import_coverage(bv):
@@ -68,7 +61,7 @@ def filter_coverage(bv):
         # map choice back to mode string
         mode_names = ["disabled", "minimum", "maximum", "exact"]
         ctx.filter_mode = mode_names[mode_field.result]
-        ctx.filter_hitcount = hitcount_field.result
+        ctx.filter_hitcount = max(0, hitcount_field.result)  # ensure non-negative
 
         # repaint with filter
         _repaint_coverage(ctx)
@@ -89,14 +82,14 @@ def _repaint_coverage(ctx):
     """helper to repaint coverage with current settings"""
     if not ctx.covdb.coverage_file:
         return
-    
+
     # get filtered addresses if filter is active
     coverage_addrs = None
     if ctx.filter_mode != "disabled" and ctx.filter_hitcount > 0:
         coverage_addrs = ctx.covdb.filter_by_hitcount(
             ctx.filter_hitcount, ctx.filter_mode
         )
-    
+
     # paint with appropriate method
     if ctx.heatmap_enabled:
         ctx.painter.paint_heatmap(coverage_addrs)
@@ -114,10 +107,10 @@ def toggle_heatmap(bv):
 
     # toggle state
     ctx.heatmap_enabled = not ctx.heatmap_enabled
-    
+
     # repaint with new state
     _repaint_coverage(ctx)
-    
+
     # log the change
     mode = "heatmap" if ctx.heatmap_enabled else "solid color"
     log_info(f"switched to {mode} visualization")
@@ -131,7 +124,7 @@ PluginCommand.register(
 )
 
 PluginCommand.register(
-    "CovTool\\Filter Coverage", "Filter coverage by minimum hitcount", filter_coverage
+    "CovTool\\Filter Coverage", "Filter coverage by hitcount", filter_coverage
 )
 
 PluginCommand.register(
