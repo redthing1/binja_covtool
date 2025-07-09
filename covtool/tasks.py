@@ -90,10 +90,10 @@ class CoverageImportTask(BackgroundTaskThread):
             # show stats if enabled
             if my_settings.get_bool("covtool.showStatsInLog"):
                 stats = ctx.covdb.get_coverage_stats()
-                log_info(
-                    self.bv,
-                    f"loaded coverage: {stats['total_covered']} instructions from {stats['unique_blocks']} blocks"
-                )
+                msg = f"loaded coverage: {stats['total_covered']} instructions from {stats['unique_blocks']} blocks"
+                if stats["invalid_addresses"] > 0:
+                    msg += f" ({stats['invalid_addresses']} invalid addresses ignored)"
+                log_info(self.bv, msg)
 
         except Exception as e:
             self.error = str(e)
