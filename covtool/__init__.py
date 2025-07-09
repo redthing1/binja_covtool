@@ -11,6 +11,7 @@ from .context import get_context
 from .parsers import detect_and_parse
 from .settings import my_settings
 from .tasks import CoverageImportTask
+from .logging import log_info
 
 
 def import_coverage(bv):
@@ -58,7 +59,7 @@ def clear_coverage(bv):
     ctx.filter_hitcount = 0
     ctx.filter_mode = "disabled"
     ctx.heatmap_enabled = False
-    log_info("coverage cleared")
+    log_info(bv, "coverage cleared")
 
 
 def _repaint_coverage(ctx):
@@ -96,7 +97,7 @@ def toggle_heatmap(bv):
 
     # log the change
     mode = "heatmap" if ctx.heatmap_enabled else "solid color"
-    log_info(f"switched to {mode} visualization")
+    log_info(bv, f"switched to {mode} visualization")
 
 
 # register plugin commands

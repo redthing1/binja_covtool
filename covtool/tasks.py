@@ -1,9 +1,10 @@
-from binaryninja import BackgroundTaskThread, log_info, log_error
+from binaryninja import BackgroundTaskThread
 from binaryninja.interaction import show_message_box
 
 from .context import get_context
 from .parsers import detect_and_parse
 from .settings import my_settings
+from .logging import log_info, log_error
 
 
 class CoverageImportTask(BackgroundTaskThread):
@@ -90,17 +91,18 @@ class CoverageImportTask(BackgroundTaskThread):
             if my_settings.get_bool("covtool.showStatsInLog"):
                 stats = ctx.covdb.get_coverage_stats()
                 log_info(
+                    self.bv,
                     f"loaded coverage: {stats['total_covered']} instructions from {stats['unique_blocks']} blocks"
                 )
 
         except Exception as e:
             self.error = str(e)
-            log_error(f"coverage import failed: {e}")
+            log_error(self.bv, f"coverage import failed: {e}")
 
     def finish(self):
         """called when task completes"""
         if self.cancelled:
-            log_info("coverage import cancelled")
+            log_info(self.bv, "coverage import cancelled")
         elif self.error:
             show_message_box("Error", f"Failed to import coverage: {self.error}")
         else:
