@@ -21,13 +21,24 @@ class CoverageImportTask(BackgroundTaskThread):
         """run the import task"""
         try:
             # phase 1: parse coverage file
-            self.progress = "Parsing coverage file..."
+            import os
+
+            filename = os.path.basename(self.filepath)
+            self.progress = f"Parsing {filename}..."
             if self.cancelled:
                 return
 
             self.coverage_data = detect_and_parse(self.bv, self.filepath)
             if self.cancelled:
                 return
+
+            # get initial stats
+            if isinstance(self.coverage_data, dict):
+                total_entries = len(self.coverage_data)
+                self.progress = f"Parsed {total_entries:,} coverage entries"
+            else:
+                total_entries = len(self.coverage_data)
+                self.progress = f"Parsed {total_entries:,} addresses"
 
             # phase 2: load into database
             self.progress = "Loading into database..."
@@ -56,7 +67,9 @@ class CoverageImportTask(BackgroundTaskThread):
 
                     processed += len(chunk)
                     percent = int((processed / total) * 100)
-                    self.progress = f"Loading coverage data... {percent}%"
+                    self.progress = (
+                        f"Processing {processed:,}/{total:,} blocks ({percent}%)"
+                    )
             else:
                 # small dataset, load normally
                 ctx.covdb.load_coverage(self.filepath, self.coverage_data)
@@ -66,7 +79,16 @@ class CoverageImportTask(BackgroundTaskThread):
                 return
 
             # phase 3: apply filter and paint
-            self.progress = "Applying coverage highlights..."
+            stats = ctx.covdb.get_coverage_stats()
+            valid_count = stats["total_covered"]
+            invalid_count = stats["invalid_addresses"]
+
+            if invalid_count > 0:
+                self.progress = (
+                    f"Validated {valid_count:,} addresses ({invalid_count:,} invalid)"
+                )
+            else:
+                self.progress = f"Validated {valid_count:,} addresses"
 
             # determine what to paint
             coverage_addrs = None
@@ -74,6 +96,12 @@ class CoverageImportTask(BackgroundTaskThread):
                 coverage_addrs = ctx.covdb.filter_by_hitcount(
                     ctx.filter_hitcount, ctx.filter_mode
                 )
+                filtered_count = len(coverage_addrs) if coverage_addrs else 0
+                self.progress = (
+                    f"Applying filter ({filtered_count:,}/{valid_count:,} addresses)..."
+                )
+            else:
+                self.progress = f"Highlighting {valid_count:,} addresses..."
 
             # paint with appropriate method
             if ctx.heatmap_enabled:
@@ -86,6 +114,10 @@ class CoverageImportTask(BackgroundTaskThread):
                 ctx.painter.clear_highlights()
                 ctx.covdb.clear()
                 return
+
+            # final progress update
+            mode = "heatmap" if ctx.heatmap_enabled else "coverage"
+            self.progress = f"Coverage imported: {valid_count:,} addresses highlighted"
 
             # show stats if enabled
             if my_settings.get_bool("covtool.showStatsInLog"):
@@ -105,6 +137,8 @@ class CoverageImportTask(BackgroundTaskThread):
             log_info(self.bv, "coverage import cancelled")
         elif self.error:
             show_message_box("Error", f"Failed to import coverage: {self.error}")
+            # set progress to show error
+            self.progress = f"Import failed: {self.error}"
         else:
-            # success - nothing to do, stats already logged if enabled
+            # success - keep the final progress message visible
             pass
