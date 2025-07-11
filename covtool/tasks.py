@@ -1,5 +1,6 @@
 from binaryninja import BackgroundTaskThread
 from binaryninja.interaction import show_message_box
+from binaryninja.enums import MessageBoxButtonSet, MessageBoxIcon
 
 from .context import get_context
 from .parsers import detect_and_parse
@@ -136,9 +137,42 @@ class CoverageImportTask(BackgroundTaskThread):
         if self.cancelled:
             log_info(self.bv, "coverage import cancelled")
         elif self.error:
-            show_message_box("Error", f"Failed to import coverage: {self.error}")
+            self._show_error_dialog()
             # set progress to show error
             self.progress = f"Import failed: {self.error}"
         else:
             # success - keep the final progress message visible
             pass
+
+    def _show_error_dialog(self):
+        """Show appropriate error dialog based on error type"""
+        error_lower = self.error.lower()
+
+        if "could not find module matching" in error_lower:
+            # Module matching error - show detailed error popup
+            title = "Module Matching Error"
+            icon = MessageBoxIcon.ErrorIcon
+            show_message_box(
+                title,
+                f"Coverage Import Failed\n\n{self.error}",
+                MessageBoxButtonSet.OKButtonSet,
+                icon,
+            )
+        elif "module base" in error_lower and "doesn't match" in error_lower:
+            # Module base validation warning
+            title = "Module Base Mismatch Warning"
+            icon = MessageBoxIcon.WarningIcon
+            show_message_box(
+                title,
+                f"Coverage Import Warning\n\n{self.error}\n\nThe coverage data may not be accurate.",
+                MessageBoxButtonSet.OKButtonSet,
+                icon,
+            )
+        else:
+            # Generic error
+            show_message_box(
+                "Coverage Import Error",
+                f"Failed to import coverage: {self.error}",
+                MessageBoxButtonSet.OKButtonSet,
+                MessageBoxIcon.ErrorIcon,
+            )
