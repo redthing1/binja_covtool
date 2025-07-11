@@ -128,21 +128,13 @@ class CoverageImportTask(BackgroundTaskThread):
                     msg += f" ({stats['invalid_addresses']} invalid addresses ignored)"
                 log_info(self.bv, msg)
 
+            # mark task as finished
+            self.finish()
+
         except Exception as e:
             self.error = str(e)
             log_error(self.bv, f"coverage import failed: {e}")
-
-    def finish(self):
-        """called when task completes"""
-        if self.cancelled:
-            log_info(self.bv, "coverage import cancelled")
-        elif self.error:
-            self._show_error_dialog()
-            # set progress to show error
-            self.progress = f"Import failed: {self.error}"
-        else:
-            # success - keep the final progress message visible
-            pass
+            self.cancel()
 
     def _show_error_dialog(self):
         """Show appropriate error dialog based on error type"""
