@@ -110,33 +110,34 @@ class DrCovParser(CoverageParser):
         for module in modules:
             base = module.base
 
-            # check if base matches any section start
-            section_matches = [s for s in sections if s[1] == base]
-            # check if base matches any segment start
+            # check if base matches any segment start (primary validation for runtime addresses)
             segment_matches = [s for s in segments if s[0] == base]
+            # check if base matches any section start (secondary validation)
+            section_matches = [s for s in sections if s[1] == base]
 
-            if section_matches or segment_matches:
+            if segment_matches:
                 valid_modules.append(module)
-                if section_matches:
-                    log_debug(
-                        self.bv,
-                        f"module {module.path} base 0x{base:x} matches section: {section_matches[0][0]}",
-                    )
-                else:
-                    log_debug(
-                        self.bv,
-                        f"module {module.path} base 0x{base:x} matches segment start",
-                    )
+                log_debug(
+                    self.bv,
+                    f"module {module.path} base 0x{base:x} matches segment start",
+                )
+            elif section_matches:
+                valid_modules.append(module)
+                log_debug(
+                    self.bv,
+                    f"module {module.path} base 0x{base:x} matches section: {section_matches[0][0]}",
+                )
             else:
-                # module base doesn't match exactly - check if it's within any section/segment
-                in_section = any(s[1] <= base < s[2] for s in sections)
+                # module base doesn't match exactly - check if it's within any segment/section
                 in_segment = any(s[0] <= base < s[1] for s in segments)
+                in_section = any(s[1] <= base < s[2] for s in sections)
 
-                if in_section or in_segment:
+                if in_segment or in_section:
                     warned_modules.append(module)
+                    location = "segment" if in_segment else "section"
                     log_warn(
                         self.bv,
-                        f"module {module.path} base 0x{base:x} is within binary range but doesn't match section/segment start",
+                        f"module {module.path} base 0x{base:x} is within binary {location} but doesn't match start",
                     )
                 else:
                     rejected_modules.append(module)
