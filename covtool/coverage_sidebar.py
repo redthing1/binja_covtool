@@ -30,6 +30,7 @@ class CoverageBlocksWidget(SidebarWidget):
         self.blocks: List[CoverageBlock] = []
         self.filtered_blocks: List[CoverageBlock] = []
         self.function_cache = {}  # cache block address -> function name
+        self.module_cache = {}  # cache module id -> module name
         
         # create UI elements
         self._create_ui()
@@ -61,7 +62,7 @@ class CoverageBlocksWidget(SidebarWidget):
         self.table = QTableWidget()
         self.table.setColumnCount(5)
         self.table.setHorizontalHeaderLabels([
-            "Address", "Size", "Hit Count", "Module", "Function"
+            "Address", "Size", "Hits", "Module", "Function"
         ])
         
         # configure table
@@ -93,6 +94,16 @@ class CoverageBlocksWidget(SidebarWidget):
             if funcs:
                 self.function_cache[block.address] = funcs[0].name
     
+    def _update_module_cache(self, ctx):
+        """update module name cache from trace modules"""
+        self.module_cache.clear()
+        if ctx.covdb.modules:
+            for module_id, module_info in ctx.covdb.modules.items():
+                # extract just the filename from the path
+                import os
+                module_name = os.path.basename(module_info.path)
+                self.module_cache[module_id] = module_name
+    
     def _update_coverage_data(self):
         """update coverage data from context"""
         if not self.bv:
@@ -111,8 +122,9 @@ class CoverageBlocksWidget(SidebarWidget):
         # get blocks from coverage database
         self.blocks = ctx.covdb.get_coverage_blocks()
         
-        # update function cache for new blocks
+        # update caches
         self._update_function_cache()
+        self._update_module_cache(ctx)
         
         # update stats
         total_blocks = len(self.blocks)
@@ -120,7 +132,7 @@ class CoverageBlocksWidget(SidebarWidget):
         trace_format = ctx.covdb.trace_format.value if ctx.covdb.trace_format else "unknown"
         
         self.stats_label.setText(
-            f"Coverage: {total_blocks:,} blocks, {total_hits:,} hits ({trace_format} format)"
+            f"Coverage: {total_blocks:,} blocks, {total_hits:,} hits ({trace_format})"
         )
         
         # apply filters and update table
@@ -178,7 +190,7 @@ class CoverageBlocksWidget(SidebarWidget):
             # module column
             module_str = ""
             if show_modules and block.module_id is not None:
-                module_str = f"Module {block.module_id}"
+                module_str = self.module_cache.get(block.module_id, f"Module {block.module_id}")
             self.table.setItem(row, 3, QTableWidgetItem(module_str))
             
             # function column
@@ -191,8 +203,9 @@ class CoverageBlocksWidget(SidebarWidget):
         if addr_item:
             address = addr_item.data(Qt.UserRole)
             if address and self.frame:
-                # navigate to the address
                 self.frame.navigate(self.bv, address)
+                # clear selection to avoid visual glitches
+                self.table.clearSelection()
     
     
     def notifyViewChanged(self, view_frame):

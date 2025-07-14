@@ -26,6 +26,7 @@ class CoverageDB:
         # block-level coverage for UI/analysis
         self.coverage_blocks: List[CoverageBlock] = []  # original blocks from trace
         self.trace_format: Optional[TraceFormat] = None  # format of loaded trace
+        self.modules: Optional[Dict[int, 'ModuleInfo']] = None  # module info from trace
 
     def load_coverage_trace(self, trace: CoverageTrace):
         """load coverage from parsed trace (replaces any existing coverage)"""
@@ -33,6 +34,7 @@ class CoverageDB:
         self.coverage_file = trace.source_file
         self.trace_format = trace.format
         self.coverage_blocks = trace.blocks.copy()  # preserve original blocks
+        self.modules = trace.modules  # preserve module info
         
         # expand blocks to instruction-level coverage for painting
         # this maintains backward compatibility with existing painting code
@@ -195,6 +197,7 @@ class CoverageDB:
         self.invalid_addrs.clear()
         self.coverage_blocks.clear()
         self.trace_format = None
+        self.modules = None
     
     # block-level coverage methods
     
