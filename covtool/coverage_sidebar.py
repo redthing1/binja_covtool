@@ -61,7 +61,7 @@ class CoverageBlocksWidget(SidebarWidget):
         self.table = QTableWidget()
         self.table.setColumnCount(5)
         self.table.setHorizontalHeaderLabels([
-            "Address", "Size", "Hit Count", "Function", "Module"
+            "Address", "Size", "Hit Count", "Module", "Function"
         ])
         
         # configure table
@@ -155,6 +155,10 @@ class CoverageBlocksWidget(SidebarWidget):
         """update table with filtered blocks"""
         self.table.setRowCount(len(self.filtered_blocks))
         
+        # get context once for module lookups
+        ctx = get_context(self.bv) if self.bv else None
+        show_modules = ctx and ctx.covdb.trace_format == TraceFormat.BLOCKS
+        
         for row, block in enumerate(self.filtered_blocks):
             # address column
             addr_item = QTableWidgetItem(f"0x{block.address:x}")
@@ -169,27 +173,17 @@ class CoverageBlocksWidget(SidebarWidget):
             # hitcount column
             hit_item = QTableWidgetItem(str(block.hitcount))
             hit_item.setTextAlignment(Qt.AlignRight)
-            # color code by hitcount (heatmap style)
-            if block.hitcount > 100:
-                hit_item.setBackground(QColor(255, 200, 200))  # light red
-            elif block.hitcount > 10:
-                hit_item.setBackground(QColor(255, 230, 200))  # light orange
-            elif block.hitcount > 1:
-                hit_item.setBackground(QColor(255, 255, 200))  # light yellow
             self.table.setItem(row, 2, hit_item)
-            
-            # function column
-            func_name = self.function_cache.get(block.address, "")
-            self.table.setItem(row, 3, QTableWidgetItem(func_name))
             
             # module column
             module_str = ""
-            if block.module_id is not None:
-                ctx = get_context(self.bv)
-                if ctx and ctx.covdb.trace_format == TraceFormat.BLOCKS:
-                    # look up module info from trace
-                    module_str = f"Module {block.module_id}"
-            self.table.setItem(row, 4, QTableWidgetItem(module_str))
+            if show_modules and block.module_id is not None:
+                module_str = f"Module {block.module_id}"
+            self.table.setItem(row, 3, QTableWidgetItem(module_str))
+            
+            # function column
+            func_name = self.function_cache.get(block.address, "")
+            self.table.setItem(row, 4, QTableWidgetItem(func_name))
     
     def _on_row_double_clicked(self, row, column):
         """navigate to block when row is double-clicked"""
