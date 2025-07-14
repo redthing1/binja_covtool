@@ -1,6 +1,8 @@
 from binaryninja import *
 import binaryninja._binaryninjacore as core
 from .logging import log_info, log_warn, log_debug
+from .coverage_types import CoverageTrace, CoverageBlock, TraceFormat
+from typing import Dict, List, Optional
 
 # cache BNGetInstructionLength for performance
 BNGetInstructionLength = core.BNGetInstructionLength
@@ -15,25 +17,32 @@ class CoverageDB:
     def __init__(self, bv):
         self.bv = bv
         self.coverage_file = None  # path to current coverage file
-        self.hitcounts = {}  # addr -> hitcount mapping
+        
+        # instruction-level coverage for painting
+        self.hitcounts: Dict[int, int] = {}  # addr -> hitcount mapping
         self._block_cache = {}  # cache for block -> instructions mapping
         self.invalid_addrs = {}  # track invalid addresses and their counts
+        
+        # block-level coverage for UI/analysis
+        self.coverage_blocks: List[CoverageBlock] = []  # original blocks from trace
+        self.trace_format: Optional[TraceFormat] = None  # format of loaded trace
 
-    def load_coverage(self, filepath, coverage_data):
-        """load coverage from parsed data (replaces any existing coverage)"""
-        # coverage_data: Dict[addr, hitcount] or Set[addr]
+    def load_coverage_trace(self, trace: CoverageTrace):
+        """load coverage from parsed trace (replaces any existing coverage)"""
         self.clear()
-        self.coverage_file = filepath
-
-        # always convert to instruction-level coverage
-        # because tracer blocks don't match binary ninja blocks
-        if isinstance(coverage_data, dict):
-            for addr, hitcount in coverage_data.items():
-                self._add_address_coverage(addr, hitcount)
-        else:
-            # it's a set
-            for addr in coverage_data:
-                self._add_address_coverage(addr, 1)
+        self.coverage_file = trace.source_file
+        self.trace_format = trace.format
+        self.coverage_blocks = trace.blocks.copy()  # preserve original blocks
+        
+        # expand blocks to instruction-level coverage for painting
+        # this maintains backward compatibility with existing painting code
+        for block in trace.blocks:
+            if block.size == 1:
+                # single instruction (from address traces)
+                self._add_address_coverage(block.address, block.hitcount)
+            else:
+                # block trace - add all instructions in the block
+                self._add_address_coverage(block.address, block.hitcount)
 
         # log statistics about invalid addresses
         if self.invalid_addrs:
@@ -184,3 +193,51 @@ class CoverageDB:
         self.hitcounts.clear()
         self._block_cache.clear()
         self.invalid_addrs.clear()
+        self.coverage_blocks.clear()
+        self.trace_format = None
+    
+    # block-level coverage methods
+    
+    def get_coverage_blocks(self) -> List[CoverageBlock]:
+        """get all coverage blocks from the original trace"""
+        return self.coverage_blocks
+    
+    def get_filtered_blocks(self, hitcount: int, mode: str = "minimum") -> List[CoverageBlock]:
+        """get coverage blocks filtered by hitcount"""
+        if hitcount <= 0 or mode == "disabled":
+            return self.coverage_blocks
+        
+        if mode == "minimum":
+            return [b for b in self.coverage_blocks if b.hitcount >= hitcount]
+        elif mode == "maximum":
+            return [b for b in self.coverage_blocks if b.hitcount <= hitcount]
+        elif mode == "exact":
+            return [b for b in self.coverage_blocks if b.hitcount == hitcount]
+        else:
+            return self.coverage_blocks
+    
+    def get_block_at_address(self, addr: int) -> Optional[CoverageBlock]:
+        """get the coverage block containing the given address"""
+        for block in self.coverage_blocks:
+            if block.contains_address(addr):
+                return block
+        return None
+    
+    def get_blocks_in_function(self, func) -> List[CoverageBlock]:
+        """get all coverage blocks that fall within a function"""
+        blocks_in_func = []
+        func_start = func.start
+        func_end = func.highest_address
+        
+        for block in self.coverage_blocks:
+            # check if block overlaps with function
+            block_end = block.address + block.size
+            if block.address < func_end and block_end > func_start:
+                blocks_in_func.append(block)
+        
+        return blocks_in_func
+    
+    def get_hottest_blocks(self, count: int = 10) -> List[CoverageBlock]:
+        """get the N most frequently hit blocks"""
+        return sorted(self.coverage_blocks, key=lambda b: b.hitcount, reverse=True)[:count]
+    

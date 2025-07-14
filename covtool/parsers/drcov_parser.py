@@ -10,6 +10,7 @@ import drcov as drcov_lib
 
 from .base import CoverageParser
 from ..logging import log_info, log_warn, log_debug, log_error
+from ..coverage_types import CoverageTrace, CoverageBlock, ModuleInfo, TraceFormat
 
 
 class DrCovParser(CoverageParser):
@@ -28,8 +29,8 @@ class DrCovParser(CoverageParser):
         except:
             return False
 
-    def parse(self):
-        """parse drcov file and return coverage dict"""
+    def parse(self) -> CoverageTrace:
+        """parse drcov file and return coverage trace"""
         log_debug(self.bv, f"parsing {self.filepath} as DrCovTrace")
 
         # 1. load coverage data
@@ -41,11 +42,11 @@ class DrCovParser(CoverageParser):
         # 3. validate modules and get their status
         validated_modules = self._validate_modules(matching_modules)
 
-        # 4. aggregate coverage from all modules (valid + warned)
-        coverage = self._aggregate_coverage(coverage_data, validated_modules)
+        # 4. create coverage trace from all modules (valid + warned)
+        trace = self._create_coverage_trace(coverage_data, validated_modules)
 
-        self.log_stats(coverage)
-        return coverage
+        self.log_stats(trace)
+        return trace
 
     def _find_matching_modules(self, coverage_data):
         """find all modules that match the target binary filename"""
@@ -164,22 +165,31 @@ class DrCovParser(CoverageParser):
             "rejected": rejected_modules,
         }
 
-    def _aggregate_coverage(self, coverage_data, validated_modules):
-        """aggregate coverage data from all valid and warned modules"""
+    def _create_coverage_trace(self, coverage_data, validated_modules) -> CoverageTrace:
+        """create coverage trace from all valid and warned modules"""
         # combine valid and warned modules for coverage aggregation
         all_modules = validated_modules["valid"] + validated_modules["warned"]
 
         if not all_modules:
-            raise ValueError("no valid modules found to aggregate coverage from")
+            raise ValueError("no valid modules found to create coverage trace from")
 
         # create module ID lookup map
         module_id_map = {module.id: module for module in all_modules}
 
-        log_info(self.bv, f"aggregating coverage from {len(all_modules)} module(s)")
+        log_info(self.bv, f"creating coverage trace from {len(all_modules)} module(s)")
 
-        coverage = {}
+        # convert drcov modules to our ModuleInfo format
+        modules_dict = {}
+        for module in all_modules:
+            modules_dict[module.id] = ModuleInfo(
+                id=module.id,
+                base=module.base,
+                end=module.end,
+                path=module.path
+            )
 
-        # process basic blocks
+        # convert basic blocks to CoverageBlock format
+        blocks = []
         if coverage_data.has_hit_counts():
             # use hit counts from the file
             for i, bb in enumerate(coverage_data.basic_blocks):
@@ -187,13 +197,31 @@ class DrCovParser(CoverageParser):
                     module = module_id_map[bb.module_id]
                     abs_addr = module.base + bb.start
                     hitcount = coverage_data.get_hit_count(i)
-                    coverage[abs_addr] = coverage.get(abs_addr, 0) + hitcount
+                    blocks.append(CoverageBlock(
+                        address=abs_addr,
+                        size=bb.size,
+                        hitcount=hitcount,
+                        module_id=bb.module_id
+                    ))
         else:
             # no hit counts, treat each block as hit once
             for bb in coverage_data.basic_blocks:
                 if bb.module_id in module_id_map:
                     module = module_id_map[bb.module_id]
                     abs_addr = module.base + bb.start
-                    coverage[abs_addr] = coverage.get(abs_addr, 0) + 1
+                    blocks.append(CoverageBlock(
+                        address=abs_addr,
+                        size=bb.size,
+                        hitcount=1,
+                        module_id=bb.module_id
+                    ))
 
-        return coverage
+        # create the trace
+        trace = CoverageTrace(
+            format=TraceFormat.BLOCKS,
+            blocks=blocks,
+            modules=modules_dict,
+            source_file=self.filepath
+        )
+
+        return trace

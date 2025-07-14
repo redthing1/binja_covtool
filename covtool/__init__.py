@@ -11,7 +11,19 @@ from .context import get_context
 from .parsers import detect_and_parse
 from .settings import my_settings
 from .tasks import CoverageImportTask
-from .logging import log_info
+from .logging import log_debug, log_info, log_warn, log_error
+
+# check if we're in the UI
+try:
+    from binaryninjaui import Sidebar
+    from .coverage_sidebar import CoverageBlocksWidgetType
+
+    _ui_available = True
+    print("[CovTool] UI available, sidebar widgets will be registered")
+except ImportError as e:
+    print(f"[CovTool] UI not available: {e}")
+    print("[CovTool] UI not available, sidebar widgets will not be registered")
+    _ui_available = False
 
 
 def import_coverage(bv):
@@ -118,3 +130,7 @@ PluginCommand.register(
 PluginCommand.register(
     "CovTool\\Toggle Heatmap", "Toggle heatmap visualization", toggle_heatmap
 )
+
+# register sidebar widget if UI is available
+if _ui_available:
+    Sidebar.addSidebarWidgetType(CoverageBlocksWidgetType())

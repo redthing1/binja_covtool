@@ -6,6 +6,7 @@ from .context import get_context
 from .parsers import detect_and_parse
 from .settings import my_settings
 from .logging import log_info, log_error
+from .coverage_types import CoverageTrace
 
 
 class CoverageImportTask(BackgroundTaskThread):
@@ -29,51 +30,25 @@ class CoverageImportTask(BackgroundTaskThread):
             if self.cancelled:
                 return
 
-            self.coverage_data = detect_and_parse(self.bv, self.filepath)
+            self.coverage_trace = detect_and_parse(self.bv, self.filepath)
             if self.cancelled:
                 return
 
             # get initial stats
-            if isinstance(self.coverage_data, dict):
-                total_entries = len(self.coverage_data)
-                self.progress = f"Parsed {total_entries:,} coverage entries"
-            else:
-                total_entries = len(self.coverage_data)
-                self.progress = f"Parsed {total_entries:,} addresses"
+            total_blocks = self.coverage_trace.total_blocks()
+            total_hits = self.coverage_trace.total_hits()
+            self.progress = f"Parsed {total_blocks:,} blocks with {total_hits:,} total hits"
 
             # phase 2: load into database
             self.progress = "Loading into database..."
             ctx = get_context(self.bv)
 
-            # if the coverage data is large, show progress during loading
-            if isinstance(self.coverage_data, dict) and len(self.coverage_data) > 1000:
-                # load in chunks with progress updates
-                total = len(self.coverage_data)
-                processed = 0
-                chunk_size = max(100, total // 20)  # 5% chunks
-
-                # clear existing coverage first
-                ctx.covdb.clear()
-                ctx.covdb.coverage_file = self.filepath
-
-                items = list(self.coverage_data.items())
-                for i in range(0, len(items), chunk_size):
-                    if self.cancelled:
-                        ctx.covdb.clear()  # rollback on cancel
-                        return
-
-                    chunk = items[i : i + chunk_size]
-                    for addr, hitcount in chunk:
-                        ctx.covdb._add_address_coverage(addr, hitcount)
-
-                    processed += len(chunk)
-                    percent = int((processed / total) * 100)
-                    self.progress = (
-                        f"Processing {processed:,}/{total:,} blocks ({percent}%)"
-                    )
-            else:
-                # small dataset, load normally
-                ctx.covdb.load_coverage(self.filepath, self.coverage_data)
+            # load coverage trace into database
+            if self.coverage_trace.total_blocks() > 1000:
+                # large dataset, show progress during loading
+                self.progress = f"Loading {self.coverage_trace.total_blocks():,} blocks into database..."
+            
+            ctx.covdb.load_coverage_trace(self.coverage_trace)
 
             if self.cancelled:
                 ctx.covdb.clear()  # rollback on cancel

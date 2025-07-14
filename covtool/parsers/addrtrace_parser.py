@@ -2,6 +2,7 @@
 
 from .base import CoverageParser
 from ..logging import log_debug
+from ..coverage_types import CoverageTrace, CoverageBlock, TraceFormat
 
 
 class AddressTraceParser(CoverageParser):
@@ -37,11 +38,12 @@ class AddressTraceParser(CoverageParser):
         except:
             return False
 
-    def parse(self):
+    def parse(self) -> CoverageTrace:
         """parse newline-separated hex addresses"""
         log_debug(self.bv, f"parsing {self.filepath} as AddressTrace")
 
-        coverage = {}
+        # use dict to accumulate hitcounts per address
+        address_hits = {}
         line_count = 0
         error_count = 0
 
@@ -69,10 +71,28 @@ class AddressTraceParser(CoverageParser):
                     continue
 
                 # increment hitcount for this address
-                coverage[addr] = coverage.get(addr, 0) + 1
+                address_hits[addr] = address_hits.get(addr, 0) + 1
 
         if error_count > 5:
             log_debug(self.bv, f"skipped {error_count} total invalid lines")
 
-        self.log_stats(coverage)
-        return coverage
+        # convert to CoverageBlock list (size=1 for each address)
+        blocks = []
+        for addr, hitcount in address_hits.items():
+            blocks.append(CoverageBlock(
+                address=addr,
+                size=1,  # single instruction
+                hitcount=hitcount,
+                module_id=None
+            ))
+
+        # create the trace
+        trace = CoverageTrace(
+            format=TraceFormat.ADDRESSES,
+            blocks=blocks,
+            modules=None,
+            source_file=self.filepath
+        )
+
+        self.log_stats(trace)
+        return trace

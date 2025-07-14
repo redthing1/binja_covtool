@@ -2,6 +2,7 @@
 
 from .base import CoverageParser
 from ..logging import log_debug, log_warn
+from ..coverage_types import CoverageTrace, CoverageBlock, TraceFormat
 
 
 class AddressHitTraceParser(CoverageParser):
@@ -41,11 +42,12 @@ class AddressHitTraceParser(CoverageParser):
         except:
             return False
 
-    def parse(self):
+    def parse(self) -> CoverageTrace:
         """parse address hit trace format"""
         log_debug(self.bv, f"parsing {self.filepath} as AddressHitTrace")
 
-        coverage = {}
+        # use dict to accumulate hitcounts per address
+        address_hits = {}
         line_count = 0
         error_count = 0
         max_hitcount = 0
@@ -93,14 +95,14 @@ class AddressHitTraceParser(CoverageParser):
                     continue
 
                 # store or accumulate hitcount
-                if addr in coverage:
+                if addr in address_hits:
                     log_debug(
                         self.bv,
                         f"duplicate address 0x{addr:x} on line {line_num}, accumulating hitcounts",
                     )
-                    coverage[addr] += hitcount
+                    address_hits[addr] += hitcount
                 else:
-                    coverage[addr] = hitcount
+                    address_hits[addr] = hitcount
 
                 if hitcount > max_hitcount:
                     max_hitcount = hitcount
@@ -110,5 +112,24 @@ class AddressHitTraceParser(CoverageParser):
 
         # log additional stats for this format
         log_debug(self.bv, f"max hitcount: {max_hitcount}")
-        self.log_stats(coverage)
-        return coverage
+
+        # convert to CoverageBlock list (size=1 for each address)
+        blocks = []
+        for addr, hitcount in address_hits.items():
+            blocks.append(CoverageBlock(
+                address=addr,
+                size=1,  # single instruction
+                hitcount=hitcount,
+                module_id=None
+            ))
+
+        # create the trace
+        trace = CoverageTrace(
+            format=TraceFormat.ADDRESSES,
+            blocks=blocks,
+            modules=None,
+            source_file=self.filepath
+        )
+
+        self.log_stats(trace)
+        return trace

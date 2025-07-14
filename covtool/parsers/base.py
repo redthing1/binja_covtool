@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 from ..logging import log_info, log_debug
+from ..coverage_types import CoverageTrace
 
 
 class CoverageParser(ABC):
@@ -23,15 +24,15 @@ class CoverageParser(ABC):
         pass
 
     @abstractmethod
-    def parse(self):
-        """parse the file and return coverage dict"""
+    def parse(self) -> CoverageTrace:
+        """parse the file and return coverage trace"""
         pass
 
-    def log_stats(self, coverage):
+    def log_stats(self, trace: CoverageTrace):
         """log parsing statistics"""
-        unique_addrs = len(coverage)
-        total_hits = sum(coverage.values())
+        total_blocks = trace.total_blocks()
+        total_hits = trace.total_hits()
         log_info(
             self.bv,
-            f"parsed {self.format_name}: {unique_addrs} unique addresses, {total_hits} total hits",
+            f"parsed {self.format_name}: {total_blocks} blocks, {total_hits} total hits",
         )
