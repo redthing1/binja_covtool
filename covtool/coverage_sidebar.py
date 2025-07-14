@@ -29,15 +29,13 @@ class CoverageBlocksWidget(SidebarWidget):
         self.frame = frame
         self.blocks: List[CoverageBlock] = []
         self.filtered_blocks: List[CoverageBlock] = []
+        self.function_cache = {}  # cache block address -> function name
         
         # create UI elements
         self._create_ui()
         
         # connect to coverage context
         self._connect_coverage_signals()
-        
-        # enable built-in refresh timer
-        self.enableRefreshTimer(1000)  # refresh every second
         
         # initial update
         self._update_coverage_data()
@@ -53,47 +51,11 @@ class CoverageBlocksWidget(SidebarWidget):
         
         # search box
         search_layout = QHBoxLayout()
-        search_layout.addWidget(QLabel("Search:"))
         self.search_box = QLineEdit()
-        self.search_box.setPlaceholderText("Filter by address or function...")
+        self.search_box.setPlaceholderText("Search address or function...")
         self.search_box.textChanged.connect(self._apply_filters)
         search_layout.addWidget(self.search_box)
         layout.addLayout(search_layout)
-        
-        # hitcount filter
-        filter_layout = QHBoxLayout()
-        filter_layout.addWidget(QLabel("Hitcount:"))
-        
-        self.hitcount_mode = QComboBox()
-        self.hitcount_mode.addItems(["Disabled", "Minimum", "Maximum", "Exact"])
-        self.hitcount_mode.currentTextChanged.connect(self._apply_filters)
-        filter_layout.addWidget(self.hitcount_mode)
-        
-        self.hitcount_value = QSpinBox()
-        self.hitcount_value.setMinimum(0)
-        self.hitcount_value.setMaximum(999999)
-        self.hitcount_value.setValue(1)
-        self.hitcount_value.valueChanged.connect(self._apply_filters)
-        filter_layout.addWidget(self.hitcount_value)
-        
-        filter_layout.addStretch()
-        layout.addLayout(filter_layout)
-        
-        # quick filter buttons
-        quick_filter_layout = QHBoxLayout()
-        self.hot_blocks_btn = QPushButton("Hot Blocks")
-        self.hot_blocks_btn.clicked.connect(self._show_hot_blocks)
-        quick_filter_layout.addWidget(self.hot_blocks_btn)
-        
-        self.cold_blocks_btn = QPushButton("Cold Blocks")
-        self.cold_blocks_btn.clicked.connect(self._show_cold_blocks)
-        quick_filter_layout.addWidget(self.cold_blocks_btn)
-        
-        self.clear_filter_btn = QPushButton("Clear Filters")
-        self.clear_filter_btn.clicked.connect(self._clear_filters)
-        quick_filter_layout.addWidget(self.clear_filter_btn)
-        
-        layout.addLayout(quick_filter_layout)
         
         # coverage blocks table
         self.table = QTableWidget()
@@ -106,6 +68,7 @@ class CoverageBlocksWidget(SidebarWidget):
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSortingEnabled(True)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)  # make read-only
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
@@ -121,6 +84,14 @@ class CoverageBlocksWidget(SidebarWidget):
         """connect to coverage context notifications"""
         # todo: implement actual signal connections when context supports it
         pass
+    
+    def _update_function_cache(self):
+        """update function name cache for all blocks"""
+        self.function_cache.clear()
+        for block in self.blocks:
+            funcs = self.bv.get_functions_containing(block.address)
+            if funcs:
+                self.function_cache[block.address] = funcs[0].name
     
     def _update_coverage_data(self):
         """update coverage data from context"""
@@ -140,6 +111,9 @@ class CoverageBlocksWidget(SidebarWidget):
         # get blocks from coverage database
         self.blocks = ctx.covdb.get_coverage_blocks()
         
+        # update function cache for new blocks
+        self._update_function_cache()
+        
         # update stats
         total_blocks = len(self.blocks)
         total_hits = sum(b.hitcount for b in self.blocks)
@@ -153,10 +127,8 @@ class CoverageBlocksWidget(SidebarWidget):
         self._apply_filters()
     
     def _apply_filters(self):
-        """apply search and hitcount filters"""
+        """apply search filter"""
         search_text = self.search_box.text().lower()
-        hitcount_mode = self.hitcount_mode.currentText().lower()
-        hitcount_value = self.hitcount_value.value()
         
         # start with all blocks
         self.filtered_blocks = self.blocks.copy()
@@ -170,24 +142,12 @@ class CoverageBlocksWidget(SidebarWidget):
                     filtered.append(block)
                     continue
                 
-                # check function name
-                funcs = self.bv.get_functions_containing(block.address)
-                if funcs:
-                    for func in funcs:
-                        if search_text in func.name.lower():
-                            filtered.append(block)
-                            break
+                # check function name from cache
+                func_name = self.function_cache.get(block.address, "")
+                if func_name and search_text in func_name.lower():
+                    filtered.append(block)
             
             self.filtered_blocks = filtered
-        
-        # apply hitcount filter
-        if hitcount_mode != "disabled" and hitcount_value > 0:
-            if hitcount_mode == "minimum":
-                self.filtered_blocks = [b for b in self.filtered_blocks if b.hitcount >= hitcount_value]
-            elif hitcount_mode == "maximum":
-                self.filtered_blocks = [b for b in self.filtered_blocks if b.hitcount <= hitcount_value]
-            elif hitcount_mode == "exact":
-                self.filtered_blocks = [b for b in self.filtered_blocks if b.hitcount == hitcount_value]
         
         self._update_table()
     
@@ -219,10 +179,7 @@ class CoverageBlocksWidget(SidebarWidget):
             self.table.setItem(row, 2, hit_item)
             
             # function column
-            func_name = ""
-            funcs = self.bv.get_functions_containing(block.address)
-            if funcs:
-                func_name = funcs[0].name
+            func_name = self.function_cache.get(block.address, "")
             self.table.setItem(row, 3, QTableWidgetItem(func_name))
             
             # module column
@@ -243,21 +200,6 @@ class CoverageBlocksWidget(SidebarWidget):
                 # navigate to the address
                 self.frame.navigate(self.bv, address)
     
-    def _show_hot_blocks(self):
-        """show only the hottest blocks"""
-        self.hitcount_mode.setCurrentText("Minimum")
-        self.hitcount_value.setValue(10)
-    
-    def _show_cold_blocks(self):
-        """show only cold blocks (hit once)"""
-        self.hitcount_mode.setCurrentText("Exact")
-        self.hitcount_value.setValue(1)
-    
-    def _clear_filters(self):
-        """clear all filters"""
-        self.search_box.clear()
-        self.hitcount_mode.setCurrentText("Disabled")
-        self.hitcount_value.setValue(1)
     
     def notifyViewChanged(self, view_frame):
         """called when the view changes"""
@@ -272,10 +214,6 @@ class CoverageBlocksWidget(SidebarWidget):
     
     def contextMenuEvent(self, event):
         self.m_contextMenuManager.show(self.m_menu, self.actionHandler)
-    
-    def notifyRefresh(self):
-        """called by the built-in refresh timer"""
-        self._update_coverage_data()
 
 
 class CoverageBlocksWidgetType(SidebarWidgetType):
