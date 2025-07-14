@@ -5,7 +5,7 @@ from binaryninjaui import (
     SidebarWidgetLocation, SidebarContextSensitivity
 )
 from PySide6 import QtCore
-from PySide6.QtCore import Qt, QRectF, QModelIndex
+from PySide6.QtCore import Qt, QRectF, QModelIndex, QTimer
 from PySide6.QtWidgets import (
     QApplication, QHBoxLayout, QVBoxLayout, QLabel, QWidget,
     QTableWidget, QTableWidgetItem, QLineEdit, QPushButton,
@@ -32,6 +32,12 @@ class CoverageBlocksWidget(SidebarWidget):
         self.function_cache = {}  # cache block address -> function name
         self.module_cache = {}  # cache module id -> module name
         
+        # filter debouncing
+        self.filter_timer = QTimer()
+        self.filter_timer.setSingleShot(True)
+        self.filter_timer.timeout.connect(self._apply_filters)
+        self.filter_timer.setInterval(300)  # 300ms delay
+        
         # create UI elements
         self._create_ui()
         
@@ -53,8 +59,8 @@ class CoverageBlocksWidget(SidebarWidget):
         # search box
         search_layout = QHBoxLayout()
         self.search_box = QLineEdit()
-        self.search_box.setPlaceholderText("Search address or function...")
-        self.search_box.textChanged.connect(self._apply_filters)
+        self.search_box.setPlaceholderText("Filter expression (e.g. hits>10, size<0x20, func:main)")
+        self.search_box.textChanged.connect(self._on_filter_text_changed)
         search_layout.addWidget(self.search_box)
         layout.addLayout(search_layout)
         
@@ -85,6 +91,11 @@ class CoverageBlocksWidget(SidebarWidget):
         """connect to coverage context notifications"""
         # todo: implement actual signal connections when context supports it
         pass
+    
+    def _on_filter_text_changed(self):
+        """called when filter text changes - starts debounce timer"""
+        self.filter_timer.stop()
+        self.filter_timer.start()
     
     def _update_function_cache(self):
         """update function name cache for all blocks"""
@@ -138,28 +149,109 @@ class CoverageBlocksWidget(SidebarWidget):
         # apply filters and update table
         self._apply_filters()
     
+    def _parse_filter_expression(self, expr):
+        """parse filter expression like 'hits>10,size<0x20,func:main'"""
+        filters = []
+        if not expr.strip():
+            return filters
+        
+        # split by comma
+        parts = [p.strip() for p in expr.split(',')]
+        
+        for part in parts:
+            if not part:
+                continue
+                
+            # try different operators
+            if '>' in part and part.count('>') == 1:
+                parts = part.split('>', 1)
+                if len(parts) == 2 and parts[0] and parts[1]:
+                    filters.append(('>', parts[0].strip(), parts[1].strip()))
+                # else: incomplete expression, skip
+            elif '<' in part and part.count('<') == 1:
+                parts = part.split('<', 1)
+                if len(parts) == 2 and parts[0] and parts[1]:
+                    filters.append(('<', parts[0].strip(), parts[1].strip()))
+                # else: incomplete expression, skip
+            elif '=' in part and part.count('=') == 1:
+                parts = part.split('=', 1)
+                if len(parts) == 2 and parts[0] and parts[1]:
+                    filters.append(('=', parts[0].strip(), parts[1].strip()))
+                # else: incomplete expression, skip
+            elif ':' in part and part.count(':') == 1:
+                parts = part.split(':', 1)
+                if len(parts) == 2 and parts[0] and parts[1]:
+                    filters.append((':', parts[0].strip(), parts[1].strip()))
+                # else: incomplete expression, skip
+            else:
+                # no operator, treat as simple text search only if it looks like plain text
+                if not any(op in part for op in ['>', '<', '=', ':']):
+                    filters.append(('text', part, ''))
+        
+        return filters
+    
     def _apply_filters(self):
-        """apply search filter"""
-        search_text = self.search_box.text().lower()
+        """apply filter expression"""
+        filter_text = self.search_box.text().strip()
         
         # start with all blocks
         self.filtered_blocks = self.blocks.copy()
         
-        # apply search filter
-        if search_text:
-            filtered = []
-            for block in self.filtered_blocks:
-                # check address
-                if search_text in f"{block.address:x}".lower():
-                    filtered.append(block)
-                    continue
-                
-                # check function name from cache
-                func_name = self.function_cache.get(block.address, "")
-                if func_name and search_text in func_name.lower():
-                    filtered.append(block)
+        if not filter_text:
+            self._update_table()
+            return
+        
+        # parse filter expression
+        filters = self._parse_filter_expression(filter_text)
+        
+        # apply each filter
+        for op, field, value in filters:
+            if op == 'text':
+                # simple text search (backward compatibility)
+                text = field.lower()
+                self.filtered_blocks = [b for b in self.filtered_blocks 
+                    if text in f"{b.address:x}".lower() or 
+                    text in self.function_cache.get(b.address, "").lower()]
             
-            self.filtered_blocks = filtered
+            elif field in ['hits', 'hitcount']:
+                # parse value as int
+                try:
+                    val = int(value)
+                    if op == '>':
+                        self.filtered_blocks = [b for b in self.filtered_blocks if b.hitcount > val]
+                    elif op == '<':
+                        self.filtered_blocks = [b for b in self.filtered_blocks if b.hitcount < val]
+                    elif op == '=':
+                        self.filtered_blocks = [b for b in self.filtered_blocks if b.hitcount == val]
+                except ValueError:
+                    pass  # invalid number, skip
+            
+            elif field == 'size':
+                # parse value as hex or int
+                try:
+                    val = int(value, 16) if value.startswith('0x') else int(value)
+                    if op == '>':
+                        self.filtered_blocks = [b for b in self.filtered_blocks if b.size > val]
+                    elif op == '<':
+                        self.filtered_blocks = [b for b in self.filtered_blocks if b.size < val]
+                    elif op == '=':
+                        self.filtered_blocks = [b for b in self.filtered_blocks if b.size == val]
+                except ValueError:
+                    pass  # invalid number, skip
+            
+            elif field in ['func', 'function']:
+                # function name search
+                val = value.lower()
+                if op in [':', '=']:
+                    self.filtered_blocks = [b for b in self.filtered_blocks 
+                        if val in self.function_cache.get(b.address, "").lower()]
+            
+            elif field in ['addr', 'address']:
+                # address search
+                val = value.lower()
+                if op in [':', '=']:
+                    self.filtered_blocks = [b for b in self.filtered_blocks 
+                        if val in f"{b.address:x}".lower()]
         
         self._update_table()
     
@@ -179,12 +271,12 @@ class CoverageBlocksWidget(SidebarWidget):
             
             # size column
             size_item = QTableWidgetItem(str(block.size))
-            size_item.setTextAlignment(Qt.AlignRight)
+            size_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.table.setItem(row, 1, size_item)
             
             # hitcount column
             hit_item = QTableWidgetItem(str(block.hitcount))
-            hit_item.setTextAlignment(Qt.AlignRight)
+            hit_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.table.setItem(row, 2, hit_item)
             
             # module column
