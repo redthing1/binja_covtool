@@ -37,7 +37,9 @@ class CoverageImportTask(BackgroundTaskThread):
             # get initial stats
             total_blocks = self.coverage_trace.total_blocks()
             total_hits = self.coverage_trace.total_hits()
-            self.progress = f"Parsed {total_blocks:,} blocks with {total_hits:,} total hits"
+            self.progress = (
+                f"Parsed {total_blocks:,} blocks with {total_hits:,} total hits"
+            )
 
             # phase 2: load into database
             self.progress = "Loading into database..."
@@ -47,7 +49,7 @@ class CoverageImportTask(BackgroundTaskThread):
             if self.coverage_trace.total_blocks() > 1000:
                 # large dataset, show progress during loading
                 self.progress = f"Loading {self.coverage_trace.total_blocks():,} blocks into database..."
-            
+
             ctx.covdb.load_coverage_trace(self.coverage_trace)
 
             if self.cancelled:

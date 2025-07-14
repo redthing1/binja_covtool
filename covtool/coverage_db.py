@@ -17,16 +17,16 @@ class CoverageDB:
     def __init__(self, bv):
         self.bv = bv
         self.coverage_file = None  # path to current coverage file
-        
+
         # instruction-level coverage for painting
         self.hitcounts: Dict[int, int] = {}  # addr -> hitcount mapping
         self._block_cache = {}  # cache for block -> instructions mapping
         self.invalid_addrs = {}  # track invalid addresses and their counts
-        
+
         # block-level coverage for UI/analysis
         self.coverage_blocks: List[CoverageBlock] = []  # original blocks from trace
         self.trace_format: Optional[TraceFormat] = None  # format of loaded trace
-        self.modules: Optional[Dict[int, 'ModuleInfo']] = None  # module info from trace
+        self.modules: Optional[Dict[int, "ModuleInfo"]] = None  # module info from trace
 
     def load_coverage_trace(self, trace: CoverageTrace):
         """load coverage from parsed trace (replaces any existing coverage)"""
@@ -35,7 +35,7 @@ class CoverageDB:
         self.trace_format = trace.format
         self.coverage_blocks = trace.blocks.copy()  # preserve original blocks
         self.modules = trace.modules  # preserve module info
-        
+
         # expand blocks to instruction-level coverage for painting
         # this maintains backward compatibility with existing painting code
         for block in trace.blocks:
@@ -198,18 +198,20 @@ class CoverageDB:
         self.coverage_blocks.clear()
         self.trace_format = None
         self.modules = None
-    
+
     # block-level coverage methods
-    
+
     def get_coverage_blocks(self) -> List[CoverageBlock]:
         """get all coverage blocks from the original trace"""
         return self.coverage_blocks
-    
-    def get_filtered_blocks(self, hitcount: int, mode: str = "minimum") -> List[CoverageBlock]:
+
+    def get_filtered_blocks(
+        self, hitcount: int, mode: str = "minimum"
+    ) -> List[CoverageBlock]:
         """get coverage blocks filtered by hitcount"""
         if hitcount <= 0 or mode == "disabled":
             return self.coverage_blocks
-        
+
         if mode == "minimum":
             return [b for b in self.coverage_blocks if b.hitcount >= hitcount]
         elif mode == "maximum":
@@ -218,29 +220,30 @@ class CoverageDB:
             return [b for b in self.coverage_blocks if b.hitcount == hitcount]
         else:
             return self.coverage_blocks
-    
+
     def get_block_at_address(self, addr: int) -> Optional[CoverageBlock]:
         """get the coverage block containing the given address"""
         for block in self.coverage_blocks:
             if block.contains_address(addr):
                 return block
         return None
-    
+
     def get_blocks_in_function(self, func) -> List[CoverageBlock]:
         """get all coverage blocks that fall within a function"""
         blocks_in_func = []
         func_start = func.start
         func_end = func.highest_address
-        
+
         for block in self.coverage_blocks:
             # check if block overlaps with function
             block_end = block.address + block.size
             if block.address < func_end and block_end > func_start:
                 blocks_in_func.append(block)
-        
+
         return blocks_in_func
-    
+
     def get_hottest_blocks(self, count: int = 10) -> List[CoverageBlock]:
         """get the N most frequently hit blocks"""
-        return sorted(self.coverage_blocks, key=lambda b: b.hitcount, reverse=True)[:count]
-    
+        return sorted(self.coverage_blocks, key=lambda b: b.hitcount, reverse=True)[
+            :count
+        ]
