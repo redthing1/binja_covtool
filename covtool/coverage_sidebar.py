@@ -5,7 +5,7 @@ from binaryninjaui import (
     SidebarWidgetLocation, SidebarContextSensitivity
 )
 from PySide6 import QtCore
-from PySide6.QtCore import Qt, QRectF, QModelIndex, QTimer
+from PySide6.QtCore import Qt, QRectF, QModelIndex
 from PySide6.QtWidgets import (
     QApplication, QHBoxLayout, QVBoxLayout, QLabel, QWidget,
     QTableWidget, QTableWidgetItem, QLineEdit, QPushButton,
@@ -36,10 +36,8 @@ class CoverageBlocksWidget(SidebarWidget):
         # connect to coverage context
         self._connect_coverage_signals()
         
-        # set up periodic refresh timer
-        self.refresh_timer = QTimer()
-        self.refresh_timer.timeout.connect(self.refresh)
-        self.refresh_timer.start(1000)  # refresh every second
+        # enable built-in refresh timer
+        self.enableRefreshTimer(1000)  # refresh every second
         
         # initial update
         self._update_coverage_data()
@@ -275,8 +273,8 @@ class CoverageBlocksWidget(SidebarWidget):
     def contextMenuEvent(self, event):
         self.m_contextMenuManager.show(self.m_menu, self.actionHandler)
     
-    def refresh(self):
-        """public method to refresh the widget data"""
+    def notifyRefresh(self):
+        """called by the built-in refresh timer"""
         self._update_coverage_data()
 
 
